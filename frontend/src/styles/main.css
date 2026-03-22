@@ -1,0 +1,455 @@
+:root {
+  color-scheme: dark;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(81, 53, 88, 0.35), transparent 32%),
+    linear-gradient(180deg, #09070f 0%, #191320 100%);
+  color: #f6f4fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: inherit;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 28px 32px 40px;
+}
+
+.goal-panel {
+  grid-area: goal;
+  position: relative;
+  border: 1px solid rgba(216, 225, 255, 0.16);
+  border-radius: 32px;
+  background: rgba(16, 18, 26, 0.92);
+  min-height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+
+.goal-panel__label {
+  position: absolute;
+  top: -26px;
+  left: 8px;
+  font: 700 14px/1 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.goal-panel__fill {
+  width: 42px;
+  height: 0;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fff2ae 0%, #d7a74d 100%);
+  transition: height 220ms ease;
+}
+
+.goal-panel__value {
+  position: absolute;
+  bottom: -28px;
+  font: 700 14px/1 "JetBrains Mono", monospace;
+  color: #fff0b2;
+}
+
+.goal-panel__hint {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 600 11px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 239, 191, 0.72);
+  white-space: nowrap;
+}
+
+.hud-shell {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-rows: auto minmax(460px, 1fr) auto;
+  grid-template-areas:
+    "goal boss"
+    "goal arena"
+    "goal bottom";
+  gap: 32px;
+  min-height: calc(100vh - 68px);
+}
+
+.boss-panel {
+  grid-area: boss;
+  border: 1px solid rgba(214, 222, 255, 0.14);
+  border-radius: 28px;
+  background: rgba(18, 16, 26, 0.94);
+  padding: 32px 38px;
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 28px;
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+}
+
+.boss-panel__active {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 34px;
+  align-items: center;
+}
+
+.portrait {
+  border-radius: 999px;
+}
+
+.portrait--active {
+  width: 206px;
+  height: 206px;
+  background: radial-gradient(circle at 40% 35%, #ff9cb2, #631426 70%);
+  border: 2px solid rgba(255, 176, 190, 0.35);
+  transition: transform 420ms ease, opacity 220ms ease, filter 220ms ease, background 220ms ease;
+}
+
+.portrait--inactive {
+  width: 74px;
+  height: 74px;
+  margin: 0 auto;
+  background: radial-gradient(circle at 40% 35%, #c6f5da, #2c7058 70%);
+  transition: transform 420ms ease, opacity 220ms ease, filter 220ms ease, background 220ms ease;
+}
+
+.boss-panel[data-controller="solace"] .portrait--active {
+  background: radial-gradient(circle at 40% 35%, #c6f5da, #2c7058 70%);
+  border-color: rgba(174, 239, 207, 0.35);
+}
+
+.boss-panel[data-controller="solace"] .portrait--inactive {
+  background: radial-gradient(circle at 40% 35%, #ff9cb2, #631426 70%);
+}
+
+.boss-panel--swapping {
+  border-color: rgba(208, 224, 255, 0.28);
+  box-shadow: 0 0 0 1px rgba(208, 224, 255, 0.1), 0 0 40px rgba(121, 153, 230, 0.12);
+}
+
+.boss-panel--swapping .portrait--active {
+  transform: translateX(48px) scale(0.42);
+  opacity: 0.72;
+  filter: saturate(0.8);
+}
+
+.boss-panel--swapping .portrait--inactive {
+  transform: translateX(-210px) scale(2.1);
+  opacity: 0.96;
+  filter: saturate(1.15);
+}
+
+.boss-panel--swap-finish {
+  transform: translateY(-2px);
+}
+
+.boss-panel__copy {
+  display: grid;
+  gap: 16px;
+}
+
+.boss-panel__title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.boss-panel__title {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 60px;
+  line-height: 1;
+}
+
+.boss-panel__role {
+  font-size: 20px;
+  color: #f4d4db;
+}
+
+.speech-bubble {
+  position: relative;
+  border: 1px solid rgba(242, 201, 210, 0.2);
+  background: #1a1624;
+  border-radius: 24px;
+  padding: 18px 22px;
+  min-height: 92px;
+}
+
+.speech-bubble__tail {
+  position: absolute;
+  left: -14px;
+  top: 28px;
+  width: 20px;
+  height: 20px;
+  background: #1a1624;
+  border-left: 1px solid rgba(242, 201, 210, 0.2);
+  border-bottom: 1px solid rgba(242, 201, 210, 0.2);
+  transform: rotate(45deg);
+}
+
+.speech-bubble__text {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.boss-panel__meta {
+  display: grid;
+  gap: 8px;
+  font: 600 14px/1.2 "JetBrains Mono", monospace;
+  color: #aac6ff;
+}
+
+.boss-panel__warning {
+  font: 500 12px/1.4 "Manrope", sans-serif;
+  color: #bcc8e5;
+  max-width: 560px;
+}
+
+.boss-panel__inactive {
+  border: 1px solid rgba(174, 239, 207, 0.2);
+  border-radius: 28px;
+  background: #101824;
+  padding: 18px 14px;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 10px;
+}
+
+.boss-panel__inactive-name {
+  font: 600 16px/1 "JetBrains Mono", monospace;
+  color: #daffeb;
+}
+
+.boss-panel__inactive-text {
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: center;
+  color: #eaf7f1;
+}
+
+.arena-panel {
+  grid-area: arena;
+  position: relative;
+  border: 3px solid transparent;
+  border-image: linear-gradient(90deg, rgba(255, 124, 151, 0.55), rgba(174, 239, 207, 0.55)) 1;
+  min-height: 460px;
+  background: #05070d;
+  overflow: hidden;
+}
+
+.arena-panel__label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 700 26px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.12em;
+  color: rgba(231, 238, 255, 0.28);
+  pointer-events: none;
+}
+
+.arena-panel--live .arena-panel__label {
+  opacity: 0.08;
+}
+
+#game-root {
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+#game-root canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  background: #081018;
+}
+
+.arena-panel__label {
+  z-index: 2;
+}
+
+.bottom-panel {
+  grid-area: bottom;
+  display: grid;
+  grid-template-columns: 240px 1fr 170px;
+  gap: 28px;
+  align-items: start;
+}
+
+.bottom-panel__objective,
+.bottom-panel__status,
+.meter-group-shell {
+  border: 1px solid rgba(216, 225, 255, 0.14);
+  border-radius: 24px;
+  background: rgba(16, 18, 26, 0.92);
+  padding: 22px 24px;
+  min-height: 116px;
+}
+
+.bottom-panel__heading,
+.meter__label {
+  font: 700 14px/1 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bottom-panel__objective-text {
+  margin-top: 18px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.bottom-panel__status {
+  display: grid;
+  gap: 18px;
+}
+
+.bottom-panel__time {
+  font: 700 32px/1 "JetBrains Mono", monospace;
+  color: #ffb9c7;
+}
+
+.bottom-panel__status-text {
+  font-size: 14px;
+  color: #d9e2f7;
+  line-height: 1.45;
+}
+
+.bottom-panel__meter-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.meter {
+  border: 1px solid rgba(216, 225, 255, 0.14);
+  border-radius: 24px;
+  background: rgba(16, 18, 26, 0.92);
+  padding: 22px 24px;
+}
+
+.meter__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.meter__track {
+  margin-top: 22px;
+  height: 24px;
+  border-radius: 12px;
+  background: #141926;
+  border: 1px solid rgba(200, 213, 255, 0.14);
+  padding: 5px;
+}
+
+.meter__fill {
+  height: 12px;
+  width: 0;
+  border-radius: 6px;
+  transition: width 180ms ease;
+}
+
+.meter__fill--chaos {
+  background: linear-gradient(90deg, #aeefcf 0%, #ff7c97 100%);
+}
+
+.meter__value {
+  font: 700 14px/1 "JetBrains Mono", monospace;
+  color: #edf3ff;
+}
+
+.meter__hearts {
+  margin-top: 18px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.meter__heart {
+  font: 700 28px/1 "JetBrains Mono", monospace;
+}
+
+.meter__heart--full {
+  color: #ff7c97;
+  text-shadow: 0 0 14px rgba(255, 124, 151, 0.35);
+}
+
+.meter__heart--empty {
+  color: rgba(255, 124, 151, 0.22);
+}
+
+.meter__caption {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #b9c6e1;
+}
+
+.loading-state,
+.error-state {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  color: #f3edf1;
+  font-size: 18px;
+}
+
+.error-state {
+  color: #ffd4dd;
+}
+
+@media (max-width: 1100px) {
+  .hud-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(360px, 1fr) auto;
+    grid-template-areas:
+      "goal"
+      "boss"
+      "arena"
+      "bottom";
+  }
+
+  .goal-panel {
+    min-height: 120px;
+    align-items: center;
+  }
+
+  .goal-panel__fill {
+    width: calc(100% - 24px);
+    height: 38px !important;
+  }
+
+  .goal-panel__value {
+    bottom: 18px;
+  }
+
+  .bottom-panel,
+  .boss-panel,
+  .boss-panel__active,
+  .bottom-panel__meter-group {
+    grid-template-columns: 1fr;
+  }
+}
