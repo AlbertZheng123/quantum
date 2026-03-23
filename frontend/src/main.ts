@@ -132,6 +132,7 @@ class ExperienceOverlay {
   }
 
   showVictoryTitle(title: string) {
+    this.card.classList.remove("experience-overlay__card--explanation");
     this.title.textContent = title;
     this.copy.textContent = "Click the button below if you want to learn how the game uses CURBY's Quantum Entropy!";
     this.form.className = "experience-overlay__actions";
