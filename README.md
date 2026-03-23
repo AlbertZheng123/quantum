@@ -376,7 +376,7 @@ Extra bits:
 - `2 forward bits` => volley count offset
 - volley count = `6 + readInt(2)` => `6..9`
 
-Each volley currently creates 2 arrows:
+Each volley currently creates 2 arrows (NOT IMPLEMENTED DUE TO CHANGE OF GAMEPLAY PLANS):
 
 Arrow 1:
 - direction from `readChoice(["up", "down", "left", "right"])`
