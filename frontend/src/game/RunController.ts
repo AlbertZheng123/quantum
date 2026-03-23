@@ -54,6 +54,19 @@ export class RunController extends EventTarget {
 
   private tutorialPaused = false;
 
+  private getPhaseSpeech(controller: "ruin" | "solace", phaseType: RunState["activePhase"]["type"]) {
+    if (controller === "solace") {
+      if (phaseType === "quantum_rain" || phaseType === "solace_shards") {
+        return "Avoid the blue tiles when I'm in control!";
+      }
+      if (phaseType === "resonance_constellation" || phaseType === "resonance_tiles" || phaseType === "solace_nodes") {
+        return "Trace the pattern carefully. Do not let the red hazards touch you.";
+      }
+      return "Stay with me. The ritual can still be sealed.";
+    }
+    return "Keep moving. Solace cannot save you if you stand still.";
+  }
+
   constructor(bootstrap: SessionBootstrap) {
     super();
     this.quantumStream = new QuantumBitStream(bootstrap.entropyBytes);
@@ -77,8 +90,8 @@ export class RunController extends EventTarget {
       activePhase: openingPhase,
       statusText: "Session seeded from quantum entropy",
       speechText: startingController === "ruin"
-        ? "Keep moving. Solace cannot save you if you stand still."
-        : "Stay with me. The ritual can still be sealed.",
+        ? this.getPhaseSpeech("ruin", openingPhase.type)
+        : this.getPhaseSpeech("solace", openingPhase.type),
       waitingText: startingController === "ruin"
         ? "I can still finish the seal if you hold on."
         : "Every second you linger makes my return worse.",
@@ -138,7 +151,7 @@ export class RunController extends EventTarget {
         this.state.speechText =
           nextController === "ruin"
             ? "The fracture is mine again. Let us see how much progress you lose."
-            : "My turn. Focus on the objective before the chaos spikes again.";
+            : this.getPhaseSpeech("solace", this.state.activePhase.type);
         this.state.waitingText =
           nextController === "ruin"
             ? "I can still finish the seal if you hold on."
@@ -184,6 +197,9 @@ export class RunController extends EventTarget {
       this.state.activePhase = this.phaseController.buildPhase(this.state.controller as "ruin" | "solace", this.state.phaseTwoActive);
       this.state.chaos = this.chaosController.nextResetValue();
       this.chaosController.reset(this.state.phaseTwoActive);
+      if (this.state.controller === "solace") {
+        this.state.speechText = this.getPhaseSpeech("solace", this.state.activePhase.type);
+      }
       this.emit("phase_success");
       return;
     }
@@ -200,6 +216,9 @@ export class RunController extends EventTarget {
       this.state.activePhase = this.phaseController.buildPhase(this.state.controller as "ruin" | "solace", this.state.phaseTwoActive);
       this.state.chaos = this.chaosController.nextResetValue();
       this.chaosController.reset(this.state.phaseTwoActive);
+      if (this.state.controller === "solace") {
+        this.state.speechText = this.getPhaseSpeech("solace", this.state.activePhase.type);
+      }
       this.emit("phase_failure");
       return;
     }
@@ -216,6 +235,9 @@ export class RunController extends EventTarget {
       this.state.activePhase = this.phaseController.buildPhase(this.state.controller as "ruin" | "solace", this.state.phaseTwoActive);
       this.state.chaos = this.chaosController.nextResetValue();
       this.chaosController.reset(this.state.phaseTwoActive);
+      if (this.state.controller === "solace") {
+        this.state.speechText = this.getPhaseSpeech("solace", this.state.activePhase.type);
+      }
       this.emit("phase_start");
       return;
     }

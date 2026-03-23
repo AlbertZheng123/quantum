@@ -29,4 +29,11 @@ if frontend_dist.exists():
 
     @app.get("/")
     async def index() -> FileResponse:
-        return FileResponse(frontend_dist / "index.html")
+        return FileResponse(
+            frontend_dist / "index.html",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
