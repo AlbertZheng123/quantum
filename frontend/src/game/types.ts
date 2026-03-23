@@ -1,5 +1,6 @@
 export type Controller = "ruin" | "solace" | "swapping";
 export type EntropySource = "curby" | "fallback";
+export type PhaseTwoTransition = "none" | "fade" | "reveal" | "pause" | "transform" | "monologue" | "gap";
 export type PhaseType =
   | "ruin_orbs"
   | "ruin_beams"
@@ -120,6 +121,7 @@ export interface ShieldArrowConfig {
   direction: "up" | "down" | "left" | "right";
   kind: "red" | "cyan";
   speed: number;
+  delayAfterMs?: number;
 }
 
 export interface ShieldParryConfig {
@@ -269,6 +271,8 @@ export interface RunState {
   defeat: boolean;
   endgameModifier: EndgameModifier;
   endgameActive: boolean;
+  phaseTwoActive: boolean;
+  phaseTwoTransition: PhaseTwoTransition;
 }
 
 export type RunUpdateReason =
@@ -280,4 +284,8 @@ export type RunUpdateReason =
   | "swap_start"
   | "swap_complete"
   | "endgame_start"
+  | "phase_two_start"
+  | "phase_two_line"
+  | "phase_two_drain"
+  | "phase_two_complete"
   | "game_over";

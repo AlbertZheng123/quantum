@@ -1,0 +1,6 @@
+services:
+  - type: web
+    runtime: docker
+    name: quantum-bossfight
+    plan: free
+    healthCheckPath: /api/health

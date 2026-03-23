@@ -37,7 +37,9 @@ type LegendEntry = {
   label: string;
 };
 
-const ARENA = { x: 20, y: 20, width: 760, height: 410 };
+const ARENA = { x: 20, y: 20, width: 410, height: 410 };
+const ARENA_CENTER_X = ARENA.x + ARENA.width / 2;
+const ARENA_CENTER_Y = ARENA.y + ARENA.height / 2;
 
 export class ArenaCanvas {
   private readonly runController: RunController;
@@ -52,7 +54,7 @@ export class ArenaCanvas {
 
   private readonly pressedKeys = new Set<string>();
 
-  private player = { x: 400, y: 225, size: 18 };
+  private player = { x: ARENA_CENTER_X, y: ARENA_CENTER_Y, size: 18 };
 
   private trapZones: TrapZone[] = [];
 
@@ -104,6 +106,8 @@ export class ArenaCanvas {
 
   private damageCooldownMs = 0;
 
+  private damageFlashMs = 0;
+
   private shardWaveCooldownMs = 0;
 
   private resonancePulseMs = 1200;
@@ -116,6 +120,8 @@ export class ArenaCanvas {
 
   private shieldSpawnTimerMs = 0;
 
+  private shieldNextDelayMs = 520;
+
   private shieldSize = 28;
 
   private shieldQueue: ShieldArrowConfig[] = [];
@@ -127,6 +133,8 @@ export class ArenaCanvas {
   private phaseHint = "";
 
   private flashOpacity = 0;
+
+  private flashColor: "white" | "ruin" | "solace" = "white";
 
   private phaseBannerText = "";
 
@@ -152,10 +160,18 @@ export class ArenaCanvas {
 
   private resultInterstitialNextPhase: PhaseType | null = null;
 
+  private tutorialMode = false;
+
+  private tutorialPaused = false;
+
+  private tutorialDamageCallback: (() => void) | null = null;
+
+  private tutorialLeadInMs = 0;
+
   constructor(runController: RunController, parent: HTMLElement) {
     this.runController = runController;
     this.canvas = document.createElement("canvas");
-    this.canvas.width = 800;
+    this.canvas.width = 450;
     this.canvas.height = 450;
     this.canvas.className = "arena-canvas";
     const context = this.canvas.getContext("2d");
@@ -185,6 +201,19 @@ export class ArenaCanvas {
     window.cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("keydown", this.handleKeyDown);
     window.removeEventListener("keyup", this.handleKeyUp);
+  }
+
+  setTutorialMode(enabled: boolean, onDamage?: (() => void) | null) {
+    this.tutorialMode = enabled;
+    this.tutorialDamageCallback = onDamage ?? null;
+  }
+
+  setPaused(paused: boolean) {
+    this.tutorialPaused = paused;
+  }
+
+  setTutorialLeadIn(ms: number) {
+    this.tutorialLeadInMs = ms;
   }
 
   syncPhase(type: PhaseType) {
@@ -219,11 +248,12 @@ export class ArenaCanvas {
     this.shieldDirection = "up";
     this.shieldSpawnDelayMs = 520;
     this.shieldSpawnTimerMs = 0;
+    this.shieldNextDelayMs = 520;
     this.shieldSize = 28;
     this.shieldQueue = [];
     this.activeShieldArrow = null;
-    this.player.x = 400;
-    this.player.y = 225;
+    this.player.x = ARENA_CENTER_X;
+    this.player.y = ARENA_CENTER_Y;
     this.phaseTitle = phase.pattern.templateName.toUpperCase();
     this.phaseHint = this.phaseHintFor(type);
     this.phaseBannerText = this.phaseBannerFor(type);
@@ -261,6 +291,7 @@ export class ArenaCanvas {
       case "shield_parry":
         this.trapZones = [];
         this.shieldSpawnDelayMs = phase.pattern.parry.spawnDelayMs;
+        this.shieldNextDelayMs = phase.pattern.parry.spawnDelayMs;
         this.shieldSize = phase.pattern.parry.shieldSize;
         this.shieldQueue = [...phase.pattern.parry.arrows];
         this.shieldSpawnTimerMs = 0;
@@ -317,7 +348,8 @@ export class ArenaCanvas {
     }
   }
 
-  flashSwap() {
+  flashSwap(targetController: "ruin" | "solace") {
+    this.flashColor = targetController;
     this.flashOpacity = 0.9;
   }
 
@@ -365,7 +397,6 @@ export class ArenaCanvas {
       case "swap_start":
         this.eventBannerText = "QUANTUM COLLAPSE";
         this.eventBannerTone = "warning";
-        this.flashOpacity = 0.9;
         break;
       case "swap_complete":
         this.eventBannerText =
@@ -398,7 +429,7 @@ export class ArenaCanvas {
 
     switch (event.key.toLowerCase()) {
       case "j":
-        this.runController.applyPhaseDamage(1);
+        this.takeDamage();
         break;
       case "k":
         if (this.runController.state.activePhase.objectiveTarget > 0) {
@@ -428,6 +459,12 @@ export class ArenaCanvas {
   }
 
   private update(deltaMs: number) {
+    if (this.tutorialPaused) {
+      this.flashOpacity = Math.max(0, this.flashOpacity - deltaMs / 500);
+      this.damageFlashMs = Math.max(0, this.damageFlashMs - deltaMs);
+      return;
+    }
+
     if (this.resultInterstitialMs > 0) {
       this.resultInterstitialMs = Math.max(0, this.resultInterstitialMs - deltaMs);
       const charsToShow = Math.min(
@@ -444,9 +481,15 @@ export class ArenaCanvas {
 
     this.runController.update(deltaMs);
     this.damageCooldownMs = Math.max(0, this.damageCooldownMs - deltaMs);
-    this.flashOpacity = Math.max(0, this.flashOpacity - deltaMs / 220);
+    this.damageFlashMs = Math.max(0, this.damageFlashMs - deltaMs);
+    this.flashOpacity = Math.max(0, this.flashOpacity - deltaMs / 500);
     this.phaseBannerMs = Math.max(0, this.phaseBannerMs - deltaMs);
     this.eventBannerMs = Math.max(0, this.eventBannerMs - deltaMs);
+
+    if (this.runController.state.phaseTwoTransition !== "none") {
+      return;
+    }
+
     this.handleMovement(deltaMs / 1000);
 
     if (this.runController.state.controller === "swapping") {
@@ -463,8 +506,8 @@ export class ArenaCanvas {
       if (this.pressedKeys.has("arrowright") || this.pressedKeys.has("d")) this.shieldDirection = "right";
       if (this.pressedKeys.has("arrowup") || this.pressedKeys.has("w")) this.shieldDirection = "up";
       if (this.pressedKeys.has("arrowdown") || this.pressedKeys.has("s")) this.shieldDirection = "down";
-      this.player.x = 400;
-      this.player.y = 225;
+      this.player.x = ARENA_CENTER_X;
+      this.player.y = ARENA_CENTER_Y;
       return;
     }
 
@@ -489,6 +532,11 @@ export class ArenaCanvas {
   }
 
   private updatePhaseObjects(deltaMs: number) {
+    if (this.tutorialLeadInMs > 0) {
+      this.tutorialLeadInMs = Math.max(0, this.tutorialLeadInMs - deltaMs);
+      return;
+    }
+
     const phaseType = this.runController.state.activePhase.type;
 
     if (phaseType === "quantum_lattice" || phaseType === "ruin_orbs") {
@@ -575,9 +623,11 @@ export class ArenaCanvas {
     if (phaseType === "shield_parry") {
       if (!this.activeShieldArrow && this.shieldQueue.length > 0) {
         this.shieldSpawnTimerMs += deltaMs;
-        if (this.shieldSpawnTimerMs >= this.shieldSpawnDelayMs) {
+        if (this.shieldSpawnTimerMs >= this.shieldNextDelayMs) {
           this.shieldSpawnTimerMs = 0;
-          this.activeShieldArrow = this.spawnShieldArrow(this.shieldQueue.shift()!);
+          const nextArrow = this.shieldQueue.shift()!;
+          this.activeShieldArrow = this.spawnShieldArrow(nextArrow);
+          this.shieldNextDelayMs = nextArrow.delayAfterMs ?? this.shieldSpawnDelayMs;
         }
       }
       if (this.activeShieldArrow) {
@@ -627,7 +677,7 @@ export class ArenaCanvas {
         if (onChaosTile) {
           this.runController.applyChaosTrap();
         } else if (this.damageCooldownMs <= 0) {
-          this.runController.applyPhaseDamage(1);
+          this.takeDamage();
           this.damageCooldownMs = 280;
         }
       }
@@ -653,7 +703,7 @@ export class ArenaCanvas {
       if (resolution && this.latticeNeedsResolution && this.damageCooldownMs <= 0) {
         const playerCell = this.playerCellIndex();
         if (resolution.activeCells.includes(playerCell)) {
-          this.runController.applyPhaseDamage(1);
+          this.takeDamage();
           this.damageCooldownMs = 360;
         } else if (resolution.warningCells.includes(playerCell)) {
           this.runController.applyChaosTrap();
@@ -670,7 +720,7 @@ export class ArenaCanvas {
     if (this.runController.state.activePhase.type === "orbit_constellation" && this.damageCooldownMs <= 0) {
       for (const star of this.orbitStars) {
         if (this.circleIntersectsPlayer(star.x, star.y, star.currentSize)) {
-          this.runController.applyPhaseDamage(1);
+          this.takeDamage();
           this.damageCooldownMs = 360;
           break;
         }
@@ -679,7 +729,7 @@ export class ArenaCanvas {
 
     for (const orb of this.orbHazards) {
       if (this.damageCooldownMs <= 0 && this.circleIntersectsPlayer(orb.x, orb.y, orb.radius)) {
-        this.runController.applyPhaseDamage(1);
+        this.takeDamage();
         this.damageCooldownMs = 420;
         orb.vx *= -1;
         orb.vy *= -1;
@@ -694,7 +744,7 @@ export class ArenaCanvas {
       for (const laneIndex of laneIndexes) {
         const lane = this.beamLanes[laneIndex];
         if (lane && this.rectIntersectsPlayer(lane.x - lane.width / 2, ARENA.y, lane.width, ARENA.height)) {
-          this.runController.applyPhaseDamage(1);
+          this.takeDamage();
           this.damageCooldownMs = 420;
           break;
         }
@@ -712,7 +762,7 @@ export class ArenaCanvas {
         return lane ? this.rectIntersectsPlayer(lane.x - lane.width / 2, ARENA.y, lane.width, ARENA.height) : false;
       });
       if (!insideSafeLane) {
-        this.runController.applyPhaseDamage(1);
+        this.takeDamage();
         this.damageCooldownMs = 420;
       }
     }
@@ -726,7 +776,7 @@ export class ArenaCanvas {
         for (const laneIndex of volley.verticalLanes) {
           const x = pattern.xLaneCenters[laneIndex];
           if (this.rectIntersectsPlayer(x - pattern.beamThickness / 2, ARENA.y, pattern.beamThickness, ARENA.height)) {
-            this.runController.applyPhaseDamage(1);
+            this.takeDamage();
             this.damageCooldownMs = 420;
             return;
           }
@@ -734,7 +784,7 @@ export class ArenaCanvas {
         for (const laneIndex of volley.horizontalLanes) {
           const y = pattern.yLaneCenters[laneIndex];
           if (this.rectIntersectsPlayer(ARENA.x, y - pattern.beamThickness / 2, ARENA.width, pattern.beamThickness)) {
-            this.runController.applyPhaseDamage(1);
+            this.takeDamage();
             this.damageCooldownMs = 420;
             return;
           }
@@ -749,7 +799,7 @@ export class ArenaCanvas {
         const blocked = this.shieldBlocksArrow(arrow);
         if (arrow.kind === "red") {
           if (!blocked && this.damageCooldownMs <= 0) {
-            this.runController.applyPhaseDamage(1);
+            this.takeDamage();
             this.damageCooldownMs = 320;
           }
         } else if (!blocked) {
@@ -777,7 +827,7 @@ export class ArenaCanvas {
       if (shard.kind === "good") {
         this.runController.collectObjective(1);
       } else if (this.damageCooldownMs <= 0) {
-        this.runController.applyPhaseDamage(1);
+        this.takeDamage();
         this.damageCooldownMs = 320;
       }
     }
@@ -800,13 +850,44 @@ export class ArenaCanvas {
     return distance <= radius + this.player.size / 2;
   }
 
+  private wrapCenteredText(text: string, centerX: number, startY: number, maxWidth: number, lineHeight: number) {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let currentLine = "";
+
+    for (const word of words) {
+      const nextLine = currentLine ? `${currentLine} ${word}` : word;
+      if (this.ctx.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+
+    if (currentLine) lines.push(currentLine);
+
+    lines.forEach((line, index) => {
+      this.ctx.fillText(line, centerX, startY + index * lineHeight);
+    });
+  }
+
+  private takeDamage() {
+    this.damageFlashMs = 130;
+    if (this.tutorialMode) {
+      this.tutorialDamageCallback?.();
+      return;
+    }
+    this.runController.applyPhaseDamage(1);
+  }
+
   private spawnShardWave(wave: ShardWaveConfig) {
     for (const lane of wave.lanes) {
       this.shardTargets.push({
         x: lane.x,
         y: 52,
-        width: 26,
-        height: 38,
+        width: 44,
+        height: 60,
         kind: lane.kind,
         state: "warning",
         warningMs: lane.warningMs,
@@ -817,6 +898,7 @@ export class ArenaCanvas {
 
   private spawnNextShardWave() {
     const wave = this.runController.nextShardWave();
+    const trapLayout = this.runController.nextShardTrapLayout();
     const pattern =
       this.runController.state.activePhase.pattern.type === "quantum_rain" ||
       this.runController.state.activePhase.pattern.type === "solace_shards"
@@ -824,6 +906,9 @@ export class ArenaCanvas {
         : null;
     if (!wave || !pattern) {
       return;
+    }
+    if (trapLayout) {
+      this.trapZones = trapLayout.map((trap) => ({ ...trap }));
     }
     this.spawnShardWave(wave);
     this.shardWaveCooldownMs = pattern.shardPattern.waveSpacingMs;
@@ -865,29 +950,26 @@ export class ArenaCanvas {
   }
 
   private relocateTrapZone(trap: TrapZone) {
-    const padding = 28;
-    const attempts = 20;
-    let best = { x: trap.x, y: trap.y };
-
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const x = ARENA.x + padding + Math.random() * (ARENA.width - padding * 2);
-      const y = ARENA.y + padding + Math.random() * (ARENA.height - padding * 2);
-      const overlapsExisting = this.trapZones.some((other) => {
+    const anchorXs = [66, 116, 166, 216, 266, 316, 366];
+    const anchorYs = [66, 126, 186, 246, 306, 366];
+    const candidates = anchorXs.flatMap((x) =>
+      anchorYs.map((y) => ({ x: ARENA.x + x, y: ARENA.y + y })),
+    ).filter(({ x, y }) =>
+      !this.trapZones.some((other) => {
         if (other === trap) {
           return false;
         }
         const minDistance = (other.size + trap.size) / 2 + 18;
         return Math.hypot(other.x - x, other.y - y) < minDistance;
-      });
-      if (overlapsExisting) {
-        continue;
-      }
-      best = { x, y };
-      break;
-    }
+      }),
+    );
 
-    trap.x = best.x;
-    trap.y = best.y;
+    const nextAnchor = candidates.length > 0
+      ? this.runController.readQuantumChoice(candidates)
+      : { x: trap.x, y: trap.y };
+
+    trap.x = nextAnchor.x;
+    trap.y = nextAnchor.y;
     trap.consumed = false;
   }
 
@@ -932,8 +1014,8 @@ export class ArenaCanvas {
     if (candidates.length === 0) {
       return;
     }
-    const replaceIndex = Math.floor(Math.random() * frame.warningCells.length);
-    const nextCell = candidates[Math.floor(Math.random() * candidates.length)];
+    const replaceIndex = this.runController.readQuantumIndex(frame.warningCells.length);
+    const nextCell = this.runController.readQuantumChoice(candidates);
     frame.warningCells[replaceIndex] = nextCell;
   }
 
@@ -976,25 +1058,19 @@ export class ArenaCanvas {
       this.ctx.fillStyle = "#000000";
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.textAlign = "center";
-      this.ctx.fillStyle = this.resultInterstitialOutcome === "passed" ? "#CFFFE1" : "#FFD9E1";
-      this.ctx.font = 'bold 30px "JetBrains Mono", monospace';
+      this.ctx.fillStyle = this.resultInterstitialOutcome === "passed" ? "#00FF66" : "#FF3B4D";
+      this.ctx.font = '22px "Press Start 2P", monospace';
       this.ctx.fillText(
         this.resultInterstitialOutcome === "passed" ? "Passed stage!" : "Failed stage!",
         this.canvas.width / 2,
-        140,
+        154,
       );
-      this.ctx.fillStyle = "#F4EFF8";
-      this.ctx.font = 'bold 18px "JetBrains Mono", monospace';
-      this.ctx.fillText(this.resultInterstitialSpeaker, this.canvas.width / 2, 214);
-      this.ctx.fillStyle = "#D2DCEE";
-      this.ctx.font = '20px "Manrope", sans-serif';
-      this.ctx.fillText(this.resultInterstitialTyped, this.canvas.width / 2, 258);
       this.ctx.fillStyle = "#FFF1AD";
-      this.ctx.font = 'bold 42px "JetBrains Mono", monospace';
-      this.ctx.fillText(String(countdown), this.canvas.width / 2, 336);
-      this.ctx.font = '14px "JetBrains Mono", monospace';
+      this.ctx.font = '22px "Press Start 2P", monospace';
+      this.ctx.fillText(String(countdown), this.canvas.width / 2, 274);
+      this.ctx.font = '9px "Press Start 2P", monospace';
       this.ctx.fillStyle = "#C1CAD9";
-      this.ctx.fillText("Next minigame begins soon", this.canvas.width / 2, 372);
+      this.ctx.fillText("NEXT MINIGAME SOON", this.canvas.width / 2, 324);
       this.ctx.textAlign = "left";
       return;
     }
@@ -1003,49 +1079,28 @@ export class ArenaCanvas {
       this.ctx.fillStyle = "#000000";
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.fillStyle = "#F6F2F7";
-      this.ctx.font = 'bold 32px "JetBrains Mono", monospace';
+      this.ctx.font = '16px "Press Start 2P", monospace';
       this.ctx.textAlign = "center";
-      this.ctx.fillText("SWAP OCCURING!", this.canvas.width / 2, this.canvas.height / 2);
-      this.ctx.font = '16px "JetBrains Mono", monospace';
+      this.ctx.fillText("SWAP OCCURING!", this.canvas.width / 2, this.canvas.height / 2 - 18);
+      this.ctx.font = '8px "Press Start 2P", monospace';
       this.ctx.fillStyle = "#C8BED1";
-      this.ctx.fillText("Reality is reassigning control...", this.canvas.width / 2, this.canvas.height / 2 + 34);
+      this.ctx.fillText("REALITY IS REASSIGNING CONTROL", this.canvas.width / 2, this.canvas.height / 2 + 20);
       this.ctx.textAlign = "left";
       return;
     }
 
-    this.ctx.fillStyle = "#081018";
+    if (this.runController.state.phaseTwoTransition !== "none") {
+      this.ctx.fillStyle = "#000000";
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      return;
+    }
+
+    this.ctx.fillStyle = "#000000";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    this.ctx.strokeStyle = "rgba(83, 105, 148, 0.18)";
-    this.ctx.lineWidth = 1;
-    for (let x = ARENA.x; x <= ARENA.x + ARENA.width; x += 76) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, ARENA.y);
-      this.ctx.lineTo(x, ARENA.y + ARENA.height);
-      this.ctx.stroke();
-    }
-    for (let y = ARENA.y; y <= ARENA.y + ARENA.height; y += 82) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(ARENA.x, y);
-      this.ctx.lineTo(ARENA.x + ARENA.width, y);
-      this.ctx.stroke();
-    }
-
-    this.ctx.strokeStyle = "rgba(125,80,100,0.8)";
-    this.ctx.lineWidth = 2;
+    this.ctx.strokeStyle = "#F4F4F4";
+    this.ctx.lineWidth = 4;
     this.ctx.strokeRect(ARENA.x, ARENA.y, ARENA.width, ARENA.height);
-
-    this.ctx.fillStyle = "#f3edf9";
-    this.ctx.font = '20px "JetBrains Mono", monospace';
-    this.ctx.fillText(this.phaseTitle, 36, 38);
-
-    this.ctx.fillStyle = "#bdc8e6";
-    this.ctx.font = '16px "Manrope", sans-serif';
-    this.ctx.fillText(this.phaseHint, 36, 62);
-
-    this.drawArenaLegend();
-    this.drawObjectiveChip();
-    this.drawChaosWarning();
     this.drawTrapZones();
     this.drawLattice();
     this.drawBeamLanes();
@@ -1053,12 +1108,21 @@ export class ArenaCanvas {
     this.drawNodes();
     this.drawShards();
     this.drawPlayer();
-    this.drawPhaseBanner();
-    this.drawEventBanner();
     this.drawEndOverlay();
 
     if (this.flashOpacity > 0) {
-      this.ctx.fillStyle = `rgba(255,255,255,${this.flashOpacity * 0.25})`;
+      const alpha = this.flashOpacity * 0.28;
+      this.ctx.fillStyle =
+        this.flashColor === "solace"
+          ? `rgba(130, 247, 255, ${alpha})`
+          : this.flashColor === "ruin"
+            ? `rgba(255, 54, 54, ${alpha})`
+            : `rgba(255,255,255,${alpha})`;
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    if (this.damageFlashMs > 0) {
+      this.ctx.fillStyle = `rgba(255, 30, 30, ${Math.min(0.38, this.damageFlashMs / 200)})`;
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
   }
@@ -1127,6 +1191,7 @@ export class ArenaCanvas {
     const arenaWidth = ARENA.width / lattice.cols;
     const arenaHeight = ARENA.height / lattice.rows;
     const progress = frame.durationMs > 0 ? Math.min(1, this.latticeFrameTimerMs / frame.durationMs) : 1;
+    const phaseTwo = this.runController.state.phaseTwoActive;
 
     for (let index = 0; index < lattice.cols * lattice.rows; index += 1) {
       const col = index % lattice.cols;
@@ -1135,14 +1200,21 @@ export class ArenaCanvas {
       const y = ARENA.y + row * arenaHeight;
       const isActive = frame.activeCells.includes(index);
       const isWarning = frame.warningCells.includes(index) && !isActive;
+      const heat = Math.min(1, progress);
 
       this.ctx.fillStyle = isActive
-        ? `rgba(163,0,0,${0.55 + progress * 0.28})`
+        ? phaseTwo
+          ? `rgba(${Math.round(124 + heat * 131)}, ${Math.round(0 + heat * 22)}, ${Math.round(6 + heat * 10)}, ${0.72 + heat * 0.22})`
+          : `rgba(${Math.round(82 + heat * 173)}, ${Math.round(4 + heat * 34)}, ${Math.round(12 + heat * 18)}, ${0.56 + heat * 0.28})`
         : isWarning
           ? "rgba(130,247,255,0.22)"
           : "rgba(11,93,30,0.42)";
       this.ctx.fillRect(x + 4, y + 4, arenaWidth - 8, arenaHeight - 8);
-      this.ctx.strokeStyle = isActive ? "#FFB0BB" : isWarning ? "#82F7FF" : "#00FF88";
+      this.ctx.strokeStyle = isActive
+        ? phaseTwo
+          ? `rgb(${Math.round(224 + heat * 31)}, ${Math.round(38 + heat * 40)}, ${Math.round(44 + heat * 30)})`
+          : `rgb(${Math.round(168 + heat * 87)}, ${Math.round(74 + heat * 95)}, ${Math.round(82 + heat * 70)})`
+        : isWarning ? "#82F7FF" : "#00FF88";
       this.ctx.lineWidth = isActive ? 2.5 : 1.5;
       this.ctx.strokeRect(x + 4, y + 4, arenaWidth - 8, arenaHeight - 8);
     }
@@ -1217,9 +1289,9 @@ export class ArenaCanvas {
     for (let index = 0; index < volley.verticalLanes.length; index += 1) {
       const x = pattern.xLaneCenters[volley.verticalLanes[index]];
       const anchor = volley.verticalAnchors[index];
-      const y = anchor === "top" ? ARENA.y - 2 : ARENA.y + ARENA.height - 30;
+      const y = anchor === "top" ? ARENA.y - 6 : ARENA.y + ARENA.height - 40;
       this.ctx.fillStyle = this.beamState === "warning" ? "rgba(255,221,231,0.85)" : "#FF7C97";
-      this.ctx.fillRect(x - 18, y, 36, 28);
+      this.ctx.fillRect(x - 24, y, 48, 36);
       if (this.beamState === "warning") {
         this.ctx.fillStyle = "rgba(182, 191, 206, 0.16)";
         this.ctx.fillRect(x - pattern.beamThickness / 2, ARENA.y, pattern.beamThickness, ARENA.height);
@@ -1236,9 +1308,9 @@ export class ArenaCanvas {
     for (let index = 0; index < volley.horizontalLanes.length; index += 1) {
       const y = pattern.yLaneCenters[volley.horizontalLanes[index]];
       const anchor = volley.horizontalAnchors[index];
-      const x = anchor === "left" ? ARENA.x - 2 : ARENA.x + ARENA.width - 30;
+      const x = anchor === "left" ? ARENA.x - 6 : ARENA.x + ARENA.width - 40;
       this.ctx.fillStyle = this.beamState === "warning" ? "rgba(255,221,231,0.85)" : "#FF7C97";
-      this.ctx.fillRect(x, y - 18, 28, 36);
+      this.ctx.fillRect(x, y - 24, 36, 48);
       if (this.beamState === "warning") {
         this.ctx.fillStyle = "rgba(182, 191, 206, 0.16)";
         this.ctx.fillRect(ARENA.x, y - pattern.beamThickness / 2, ARENA.width, pattern.beamThickness);
@@ -1349,7 +1421,11 @@ export class ArenaCanvas {
 
     const progress = this.runController.state.activePhase.objectiveProgress;
     const nextNode = this.nodeTargets.find((node) => node.index === progress);
-    const pulse = 1 + Math.sin(performance.now() / 170) * 0.08;
+    const resonancePulseMs = this.runController.state.activePhase.pattern.type === "resonance_constellation"
+      ? this.runController.state.activePhase.pattern.resonance.pulseMs
+      : 1060;
+    const pulseCycleMs = phaseType === "resonance_constellation" ? resonancePulseMs : 1060;
+    const pulse = 1 + Math.sin((performance.now() / pulseCycleMs) * Math.PI * 2) * 0.1;
 
     if (phaseType === "resonance_tiles") {
       for (const tile of this.chaosTiles) {
@@ -1469,16 +1545,26 @@ export class ArenaCanvas {
         this.ctx.moveTo(shard.x, y - 18);
         this.ctx.lineTo(shard.x, ARENA.y + ARENA.height - 8);
         this.ctx.stroke();
-      } else {
-        this.ctx.fillStyle = shard.kind === "good" ? "#00FF00" : "#A30000";
       }
-      this.ctx.fillRect(x, y, shard.width, shard.height);
-      this.ctx.lineWidth = 2;
-      this.ctx.strokeStyle = shard.kind === "good" ? "#C8FFC8" : "#FFB3B3";
-      this.ctx.strokeRect(x, y, shard.width, shard.height);
-      this.ctx.fillStyle = shard.kind === "good" ? "#022a02" : "#fff0f0";
-      this.ctx.font = 'bold 14px "JetBrains Mono", monospace';
-      this.ctx.fillText(shard.kind === "good" ? "+" : "X", x + 8, y + 24);
+      this.ctx.lineWidth = 3;
+      if (shard.kind === "good") {
+        this.ctx.beginPath();
+        this.ctx.fillStyle = shard.state === "warning" ? "rgba(0,255,0,0.32)" : "#00FF00";
+        this.ctx.arc(shard.x, shard.y, shard.width / 2, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.strokeStyle = "#C8FFC8";
+        this.ctx.stroke();
+      } else {
+        this.ctx.beginPath();
+        this.ctx.fillStyle = shard.state === "warning" ? "rgba(163,0,0,0.35)" : "#A30000";
+        this.ctx.moveTo(shard.x, y + shard.height);
+        this.ctx.lineTo(x, y);
+        this.ctx.lineTo(x + shard.width, y);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.strokeStyle = "#FFB3B3";
+        this.ctx.stroke();
+      }
     }
   }
 
@@ -1591,21 +1677,25 @@ export class ArenaCanvas {
     this.ctx.fillStyle = "rgba(5, 7, 13, 0.82)";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.fillStyle = this.runController.state.victory ? "#00FF99" : "#FF8FA3";
-    this.ctx.font = 'bold 34px "JetBrains Mono", monospace';
+    this.ctx.textAlign = "center";
+    this.ctx.font = '16px "Press Start 2P", monospace';
     this.ctx.fillText(
       this.runController.state.victory ? "RITUAL COMPLETE" : "TIME EXPIRED",
-      220,
-      212,
+      this.canvas.width / 2,
+      188,
     );
     this.ctx.fillStyle = "#f2f6ff";
-    this.ctx.font = '20px "Manrope", sans-serif';
-    this.ctx.fillText(
+    this.ctx.font = '8px "Press Start 2P", monospace';
+    this.wrapCenteredText(
       this.runController.state.victory
         ? "Quantum entropy carried you across the final threshold."
         : "The goal meter never reached 100 before the collapse closed.",
-      170,
-      252,
+      this.canvas.width / 2,
+      236,
+      320,
+      18,
     );
+    this.ctx.textAlign = "left";
   }
 
   private phaseBannerFor(type: PhaseType) {

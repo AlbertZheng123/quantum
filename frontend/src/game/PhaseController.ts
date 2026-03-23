@@ -15,11 +15,39 @@ import type {
 } from "./types";
 
 const PHASE_HP = 3;
-const BEAM_LANE_CENTERS = [170, 300, 430, 560, 690];
-const BLASTER_X_LANES = [120, 250, 400, 550, 680];
+const OLD_ARENA_X = 20;
+const OLD_ARENA_WIDTH = 760;
+const NEW_ARENA_X = 20;
+const NEW_ARENA_WIDTH = 410;
+const X_SCALE = NEW_ARENA_WIDTH / OLD_ARENA_WIDTH;
+const BEAM_LANE_CENTERS = [170, 300, 430, 560, 690].map(scaleArenaX);
+const BLASTER_X_LANES = [120, 250, 400, 550, 680].map(scaleArenaX);
 const BLASTER_Y_LANES = [80, 160, 225, 290, 370];
 const LATTICE_COLS = 5;
 const LATTICE_ROWS = 4;
+
+function scaleArenaX(value: number) {
+  return NEW_ARENA_X + (value - OLD_ARENA_X) * X_SCALE;
+}
+
+function scaleSize(value: number) {
+  return Math.max(12, value * X_SCALE);
+}
+
+function scaleTrapLayout(traps: TrapZoneConfig[]) {
+  return traps.map((trap) => ({
+    x: scaleArenaX(trap.x),
+    y: trap.y,
+    size: scaleSize(trap.size),
+  }));
+}
+
+function scalePoints<T extends { x: number; y: number }>(points: T[]) {
+  return points.map((point) => ({
+    ...point,
+    x: scaleArenaX(point.x),
+  }));
+}
 
 const RUIN_TRAPS: TrapZoneConfig[][] = [
   [
@@ -183,48 +211,114 @@ export class PhaseController {
   }
 
   nextShardWave(pattern: Extract<PhasePattern, { type: "solace_shards" | "quantum_rain" }>): ShardWaveConfig {
-    const { lanePositions, templateIndex, warningBaseMs, goodSpeedBase, badSpeedBase } = pattern.shardPattern;
-    const goodLanes = this.stream.readDistinctLanes(2, lanePositions.length, "forward");
-    const remainingLanes = lanePositions.map((_, index) => index).filter((index) => !goodLanes.includes(index));
-    const badCount = Math.min(remainingLanes.length, 2 + this.stream.readInt(2, "forward"));
-    const badLanes: number[] = [];
-    while (badLanes.length < badCount) {
-      const candidate = this.stream.readChoice(remainingLanes, "forward");
-      if (!badLanes.includes(candidate)) {
-        badLanes.push(candidate);
-      }
-    }
-
-    const goodSpeedVariance = [-30, -10, 12, 28][this.stream.readInt(2, "forward")];
-    const badSpeedVariance = [-20, 0, 26, 44][this.stream.readInt(2, "forward")];
+    const { lanePositions, templateIndex, warningBaseMs, goodSpeedBase } = pattern.shardPattern;
+    const greenCount = this.stream.readBit("forward") === 0 ? 1 : 2;
+    const greenIndexes = new Set(this.stream.readDistinctLanes(greenCount, lanePositions.length, "forward"));
+    const laneKinds = lanePositions.map((_, index) => (greenIndexes.has(index) ? "good" : "bad") as const);
+    const sharedSpeedVariance = [-8, 10, 22, 38][this.stream.readInt(2, "forward")];
     const warningVariance = [-110, -60, 0, 80][this.stream.readInt(2, "forward")];
-    const staggerMode = this.stream.readInt(2, "forward");
     const laneOrdering = this.getLaneOrdering(templateIndex, lanePositions.length);
+    const sharedWarningMs = Math.max(650, warningBaseMs + warningVariance);
 
-    const lanes = [...goodLanes, ...badLanes]
+    const lanes = lanePositions
+      .map((_, index) => index)
       .sort((left, right) => laneOrdering.indexOf(left) - laneOrdering.indexOf(right))
-      .map((laneIndex, orderIndex) => {
-        const kind = goodLanes.includes(laneIndex) ? "good" : "bad";
-        const stagger = this.getShardStagger(staggerMode, orderIndex, laneIndex, lanePositions.length);
+      .map((laneIndex) => {
+        const kind = laneKinds[laneIndex];
         return {
           x: lanePositions[laneIndex],
           kind,
-          fallSpeed: kind === "good" ? goodSpeedBase + goodSpeedVariance : badSpeedBase + badSpeedVariance,
-          warningMs: Math.max(650, warningBaseMs + warningVariance + stagger),
+          fallSpeed: goodSpeedBase + sharedSpeedVariance,
+          warningMs: sharedWarningMs,
         };
       });
 
     return { lanes };
   }
 
-  buildPhase(controller: Controller): PhaseState {
+  nextShardTrapLayout(): TrapZoneConfig[] {
+    const shardTrapPresets: TrapZoneConfig[][] = [
+      [
+        { x: scaleArenaX(160), y: 132, size: scaleSize(34) },
+        { x: scaleArenaX(400), y: 218, size: scaleSize(34) },
+        { x: scaleArenaX(640), y: 304, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(236), y: 110, size: scaleSize(34) },
+        { x: scaleArenaX(400), y: 298, size: scaleSize(34) },
+        { x: scaleArenaX(564), y: 168, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(126), y: 222, size: scaleSize(34) },
+        { x: scaleArenaX(400), y: 122, size: scaleSize(34) },
+        { x: scaleArenaX(674), y: 264, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(206), y: 170, size: scaleSize(34) },
+        { x: scaleArenaX(400), y: 320, size: scaleSize(34) },
+        { x: scaleArenaX(594), y: 170, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(176), y: 322, size: scaleSize(34) },
+        { x: scaleArenaX(344), y: 136, size: scaleSize(34) },
+        { x: scaleArenaX(622), y: 234, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(142), y: 146, size: scaleSize(34) },
+        { x: scaleArenaX(510), y: 126, size: scaleSize(34) },
+        { x: scaleArenaX(468), y: 324, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(252), y: 252, size: scaleSize(34) },
+        { x: scaleArenaX(400), y: 108, size: scaleSize(34) },
+        { x: scaleArenaX(548), y: 252, size: scaleSize(34) },
+      ],
+      [
+        { x: scaleArenaX(196), y: 118, size: scaleSize(34) },
+        { x: scaleArenaX(606), y: 142, size: scaleSize(34) },
+        { x: scaleArenaX(362), y: 326, size: scaleSize(34) },
+      ],
+    ];
+
+    return shardTrapPresets[this.stream.readInt(3, "forward")].map((trap) => ({ ...trap }));
+  }
+
+  buildPhase(controller: Controller, phaseTwoActive = false): PhaseState {
     const type = controller === "ruin"
       ? this.stream.readChoice<PhaseType>(["quantum_lattice", "cross_blasters", "shield_parry"], "forward")
       : this.stream.readChoice<PhaseType>(["quantum_rain", "resonance_constellation"], "forward");
 
-    const pattern = this.buildPattern(type);
-    const timeRemaining = type === "quantum_rain" ? Number.POSITIVE_INFINITY : type === "resonance_constellation" ? 15 : 10;
-    const objectiveTarget = (type === "resonance_tiles" || type === "resonance_constellation") ? 4 : type === "quantum_rain" ? 6 : 0;
+    const pattern = this.buildPattern(type, phaseTwoActive);
+    const timeRemaining = type === "quantum_rain"
+      ? Number.POSITIVE_INFINITY
+      : type === "resonance_constellation"
+        ? 15
+        : 12;
+    const objectiveTarget = type === "resonance_constellation"
+      ? pattern.type === "resonance_constellation" ? pattern.resonance.targets.length : 0
+      : (type === "resonance_tiles") ? 4 : type === "quantum_rain" ? 6 : 0;
+
+    return {
+      type,
+      hp: PHASE_HP,
+      maxHp: PHASE_HP,
+      timeRemaining,
+      objectiveProgress: 0,
+      objectiveTarget,
+      pattern,
+    };
+  }
+
+  buildSpecificPhase(type: PhaseType, phaseTwoActive = false): PhaseState {
+    const pattern = this.buildPattern(type, phaseTwoActive);
+    const timeRemaining = type === "quantum_rain"
+      ? Number.POSITIVE_INFINITY
+      : type === "resonance_constellation"
+        ? 15
+        : 12;
+    const objectiveTarget = type === "resonance_constellation"
+      ? pattern.type === "resonance_constellation" ? pattern.resonance.targets.length : 0
+      : (type === "resonance_tiles") ? 4 : type === "quantum_rain" ? 6 : 0;
 
     return {
       type,
@@ -268,18 +362,18 @@ export class PhaseController {
     }
   }
 
-  private buildPattern(type: PhaseType): PhasePattern {
+  private buildPattern(type: PhaseType, phaseTwoActive = false): PhasePattern {
     switch (type) {
       case "quantum_lattice":
-        return this.buildQuantumLattice();
+        return this.buildQuantumLattice(phaseTwoActive);
       case "orbit_constellation":
         return this.buildOrbitConstellation();
       case "cross_blasters":
-        return this.buildCrossBlasters();
+        return this.buildCrossBlasters(phaseTwoActive);
       case "collapse_corridor":
         return this.buildCollapseCorridor();
       case "shield_parry":
-        return this.buildShieldParry();
+        return this.buildShieldParry(phaseTwoActive);
       case "quantum_rain":
         return this.buildQuantumRain();
       case "resonance_tiles":
@@ -299,12 +393,12 @@ export class PhaseController {
     }
   }
 
-  private buildQuantumLattice(): PhasePattern {
+  private buildQuantumLattice(phaseTwoActive = false): PhasePattern {
     const legacy = this.buildRuinOrbs();
     const frames = legacy.lattice.frames.map((frame) => ({
       ...frame,
       warningCells: this.pickLatticeChaosCells(frame.warningCells, frame.activeCells),
-      durationMs: 2000,
+      durationMs: phaseTwoActive ? 1300 : 2000,
     }));
     return {
       type: "quantum_lattice",
@@ -361,9 +455,9 @@ export class PhaseController {
     return {
       type: "orbit_constellation",
       templateName: `${motionName} - ${chosen.name}`,
-      traps: RUIN_TRAPS[trapLayout],
+      traps: scaleTrapLayout(RUIN_TRAPS[trapLayout]),
       constellation: {
-        centerX: 400,
+        centerX: scaleArenaX(400),
         centerY: 225,
         stars,
         connectLines,
@@ -375,36 +469,36 @@ export class PhaseController {
     };
   }
 
-  private buildCrossBlasters(): PhasePattern {
+  private buildCrossBlasters(phaseTwoActive = false): PhasePattern {
     const trapLayout = this.stream.readInt(2, "forward");
     const warningProfile = this.stream.readInt(2, "forward");
     const fireProfile = this.stream.readInt(2, "forward");
     const thicknessProfile = this.stream.readInt(2, "forward");
-    const volleyCount = 5 + this.stream.readInt(2, "forward");
+    const volleyCount = (phaseTwoActive ? 6 : 5) + this.stream.readInt(2, "forward");
     const volleys: CrossBlasterVolleyConfig[] = [];
 
     for (let index = 0; index < volleyCount; index += 1) {
-      const verticalLanes = this.stream.readDistinctLanes(2, BLASTER_X_LANES.length, "forward");
-      const horizontalLanes = this.stream.readDistinctLanes(2, BLASTER_Y_LANES.length, "forward");
+      const verticalLanes = this.stream.readDistinctLanes(phaseTwoActive ? 3 : 2, BLASTER_X_LANES.length, "forward");
+      const horizontalLanes = this.stream.readDistinctLanes(phaseTwoActive ? 3 : 2, BLASTER_Y_LANES.length, "forward");
       volleys.push({
         verticalLanes,
-        verticalAnchors: [this.stream.readBit("forward") === 0 ? "top" : "bottom", this.stream.readBit("forward") === 0 ? "top" : "bottom"],
+        verticalAnchors: Array.from({ length: verticalLanes.length }, () => (this.stream.readBit("forward") === 0 ? "top" : "bottom")),
         horizontalLanes,
-        horizontalAnchors: [this.stream.readBit("forward") === 0 ? "left" : "right", this.stream.readBit("forward") === 0 ? "left" : "right"],
+        horizontalAnchors: Array.from({ length: horizontalLanes.length }, () => (this.stream.readBit("forward") === 0 ? "left" : "right")),
       });
     }
 
     return {
       type: "cross_blasters",
       templateName: "Cross Blasters",
-      traps: RUIN_TRAPS[trapLayout],
+      traps: scaleTrapLayout(RUIN_TRAPS[trapLayout]),
       blasters: {
         xLaneCenters: BLASTER_X_LANES,
         yLaneCenters: BLASTER_Y_LANES,
         volleys,
-        warningMs: [1000, 920, 820, 760][warningProfile],
+        warningMs: phaseTwoActive ? [1900, 1780, 1700, 1620][warningProfile] : [1000, 920, 820, 760][warningProfile],
         fireMs: [260, 320, 360, 420][fireProfile],
-        beamThickness: [24, 32, 40, 52][thicknessProfile],
+        beamThickness: scaleSize(phaseTwoActive ? [58, 72, 86, 100][thicknessProfile] : [40, 54, 68, 86][thicknessProfile]),
       },
     };
   }
@@ -419,28 +513,46 @@ export class PhaseController {
     };
   }
 
-  private buildShieldParry(): PhasePattern {
+  private buildShieldParry(phaseTwoActive = false): PhasePattern {
     const trapLayout = this.stream.readInt(2, "forward");
     const speedProfile = this.stream.readInt(2, "forward");
     const spawnProfile = this.stream.readInt(2, "forward");
     const arrowCount = 12 + this.stream.readInt(2, "forward");
-    const baseSpeed = [220, 260, 300, 340][speedProfile];
+    const baseSpeed = [165, 198, 232, 270][speedProfile];
     const arrows: ShieldArrowConfig[] = [];
-    for (let index = 0; index < arrowCount; index += 1) {
-      arrows.push({
-        direction: this.stream.readChoice(["up", "down", "left", "right"] as const, "forward"),
-        kind: this.stream.readBit("forward") === 0 ? "red" : "cyan",
-        speed: baseSpeed + this.stream.readChoice([-18, -6, 12, 24], "forward"),
-      });
+    if (phaseTwoActive) {
+      const volleyCount = 6 + this.stream.readInt(2, "forward");
+      for (let index = 0; index < volleyCount; index += 1) {
+        arrows.push({
+          direction: this.stream.readChoice(["up", "down", "left", "right"] as const, "forward"),
+          kind: this.stream.readBit("forward") === 0 ? "red" : "cyan",
+          speed: baseSpeed + this.stream.readChoice([-6, 12, 24, 40], "forward"),
+          delayAfterMs: 1000,
+        });
+        arrows.push({
+          direction: this.stream.readChoice(["up", "down", "left", "right"] as const, "forward"),
+          kind: this.stream.readBit("forward") === 0 ? "red" : "cyan",
+          speed: baseSpeed + this.stream.readChoice([-6, 12, 24, 40], "forward"),
+          delayAfterMs: this.stream.readChoice([460, 560, 660, 760], "forward"),
+        });
+      }
+    } else {
+      for (let index = 0; index < arrowCount; index += 1) {
+        arrows.push({
+          direction: this.stream.readChoice(["up", "down", "left", "right"] as const, "forward"),
+          kind: this.stream.readBit("forward") === 0 ? "red" : "cyan",
+          speed: baseSpeed + this.stream.readChoice([-18, -6, 12, 24], "forward"),
+        });
+      }
     }
 
     return {
       type: "shield_parry",
-      templateName: "Quantum Shield",
-      traps: RUIN_TRAPS[trapLayout],
+      templateName: phaseTwoActive ? "Quantum Shield - Fracture Volley" : "Quantum Shield",
+      traps: scaleTrapLayout(RUIN_TRAPS[trapLayout]),
       parry: {
         arrows,
-        spawnDelayMs: [440, 360, 300, 240][spawnProfile],
+        spawnDelayMs: [500, 420, 350, 280][spawnProfile],
         shieldSize: 28,
       },
     };
@@ -512,84 +624,162 @@ export class PhaseController {
     return {
       type: "resonance_tiles",
       templateName: "Resonance Tiles",
-      traps: SOLACE_TRAPS[trapLayout],
+      traps: scaleTrapLayout(SOLACE_TRAPS[trapLayout]),
       tiles: {
-        targets: orders[orderIndex].map((tileIndex, index) => ({
-          x: tileLayouts[layoutIndex][tileIndex].x,
-          y: tileLayouts[layoutIndex][tileIndex].y,
-          size: 46,
-          index,
-        })),
+        targets: orders[orderIndex].map((tileIndex, index) => {
+          const tile = tileLayouts[layoutIndex][tileIndex];
+          return {
+            x: scaleArenaX(tile.x),
+            y: tile.y,
+            size: scaleSize(46),
+            index,
+          };
+        }),
         hazards: hazardSets[wispProfile],
       },
     };
   }
 
   private buildResonanceConstellation(): PhasePattern {
-    const layoutIndexes = this.stream.readDistinctLanes(2, NODE_LAYOUTS.length, "forward");
-    const hazardCount = 4 + this.stream.readInt(2, "forward");
-    const speedProfile = this.stream.readInt(2, "forward");
-    const firstLayout = NODE_LAYOUTS[layoutIndexes[0]];
-    const secondLayout = NODE_LAYOUTS[layoutIndexes[1]];
-    const firstPair = this.stream.readDistinctLanes(2, firstLayout.length, "forward");
-    const secondPair = this.stream.readDistinctLanes(2, secondLayout.length, "forward");
-    const firstOrder = this.stream.readBit("forward") === 1 ? [...firstPair].reverse() : firstPair;
-    const secondOrder = this.stream.readBit("forward") === 1 ? [...secondPair].reverse() : secondPair;
-    const targets = [
-      ...firstOrder.map((positionIndex, index) => ({
-        x: firstLayout[positionIndex].x,
-        y: firstLayout[positionIndex].y,
-        size: 40,
-        index,
-        group: 0,
-      })),
-      ...secondOrder.map((positionIndex, index) => ({
-        x: secondLayout[positionIndex].x,
-        y: secondLayout[positionIndex].y,
-        size: 40,
-        index: index + 2,
-        group: 1,
-      })),
-    ];
-    const speedBase = [86, 112, 138, 166][speedProfile];
+    const pulseProfile = this.stream.readInt(2, "forward");
+    const hazardSpeedProfile = this.stream.readInt(2, "forward");
+    const hazardCount = 5 + this.stream.readInt(2, "forward");
+    const offsetPoints = (points: { x: number; y: number }[], dx: number, dy: number) =>
+      points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+
+    const starSix = scalePoints([
+      { x: 400, y: 84 },
+      { x: 524, y: 154 },
+      { x: 524, y: 306 },
+      { x: 400, y: 366 },
+      { x: 276, y: 306 },
+      { x: 276, y: 154 },
+    ]);
+    const squareFour = scalePoints([
+      { x: 258, y: 98 },
+      { x: 542, y: 98 },
+      { x: 542, y: 352 },
+      { x: 258, y: 352 },
+    ]);
+    const zigzagSeven = scalePoints([
+      { x: 160, y: 116 },
+      { x: 272, y: 172 },
+      { x: 214, y: 252 },
+      { x: 390, y: 188 },
+      { x: 470, y: 278 },
+      { x: 594, y: 202 },
+      { x: 660, y: 320 },
+    ]);
+    const circleThree = scalePoints([
+      { x: 400, y: 100 },
+      { x: 286, y: 302 },
+      { x: 514, y: 302 },
+    ]);
+    const pentagonFive = scalePoints([
+      { x: 400, y: 84 },
+      { x: 544, y: 186 },
+      { x: 488, y: 346 },
+      { x: 312, y: 346 },
+      { x: 256, y: 186 },
+    ]);
+    const twinArcsSix = scalePoints([
+      { x: 220, y: 150 },
+      { x: 314, y: 94 },
+      { x: 400, y: 132 },
+      { x: 486, y: 94 },
+      { x: 580, y: 150 },
+      { x: 548, y: 324 },
+    ]);
+    const diamondWebEight = scalePoints([
+      { x: 400, y: 74 },
+      { x: 552, y: 150 },
+      { x: 624, y: 238 },
+      { x: 552, y: 326 },
+      { x: 400, y: 382 },
+      { x: 248, y: 326 },
+      { x: 176, y: 238 },
+      { x: 248, y: 150 },
+    ]);
+    const brokenLadderEight = scalePoints([
+      { x: 182, y: 106 },
+      { x: 312, y: 154 },
+      { x: 272, y: 242 },
+      { x: 418, y: 184 },
+      { x: 510, y: 278 },
+      { x: 636, y: 222 },
+      { x: 590, y: 336 },
+      { x: 710, y: 292 },
+    ]);
+
+    const constellationFamilies = [
+      { name: "Six Point Star", groups: [starSix] },
+      { name: "Square Frame + Circle Ring", groups: [offsetPoints(squareFour, -70, 0), offsetPoints(circleThree, 122, 8)] },
+      { name: "Seven Zigzag", groups: [zigzagSeven] },
+      { name: "Triangle Ring + Pentagon Seal", groups: [offsetPoints(circleThree, -118, 10), offsetPoints(pentagonFive, 92, 0)] },
+      { name: "Pentagon Seal + Square Frame", groups: [offsetPoints(pentagonFive, -94, 0), offsetPoints(squareFour, 124, 0)] },
+      { name: "Twin Arcs", groups: [twinArcsSix] },
+      { name: "Diamond Web", groups: [diamondWebEight] },
+      { name: "Broken Ladder", groups: [brokenLadderEight] },
+      { name: "Six Point Star + Square Frame", groups: [offsetPoints(starSix, -94, 0), offsetPoints(squareFour, 132, 0)] },
+    ] as const;
+
+    const chosenFamily = this.stream.readChoice(constellationFamilies, "forward");
+    const reverseObjectiveOrder = this.stream.readBit("forward") === 1;
+    const targets = [];
+    let objectiveIndex = 0;
+    chosenFamily.groups.forEach((groupPositions, group) => {
+      const positions = reverseObjectiveOrder ? [...groupPositions].reverse() : groupPositions;
+      positions.forEach((node) => {
+        targets.push({
+          x: node.x,
+          y: node.y,
+          size: scaleSize(44),
+          index: objectiveIndex,
+          group,
+        });
+        objectiveIndex += 1;
+      });
+    });
+
+    const speedBase = [92, 122, 156, 196][hazardSpeedProfile];
     const hazardPositions = [
-      { x: 120, y: 110 },
-      { x: 220, y: 80 },
-      { x: 400, y: 92 },
-      { x: 580, y: 84 },
-      { x: 680, y: 122 },
-      { x: 120, y: 340 },
-      { x: 220, y: 360 },
-      { x: 400, y: 350 },
-      { x: 580, y: 362 },
-      { x: 680, y: 332 },
-      { x: 92, y: 220 },
-      { x: 708, y: 226 },
+      { x: scaleArenaX(120), y: 110 },
+      { x: scaleArenaX(220), y: 80 },
+      { x: scaleArenaX(400), y: 92 },
+      { x: scaleArenaX(580), y: 84 },
+      { x: scaleArenaX(680), y: 122 },
+      { x: scaleArenaX(120), y: 340 },
+      { x: scaleArenaX(220), y: 360 },
+      { x: scaleArenaX(400), y: 350 },
+      { x: scaleArenaX(580), y: 362 },
+      { x: scaleArenaX(680), y: 332 },
+      { x: scaleArenaX(92), y: 220 },
+      { x: scaleArenaX(708), y: 226 },
     ];
     const hazards: OrbConfig[] = [];
     for (let index = 0; index < hazardCount; index += 1) {
       const position = this.stream.readChoice(hazardPositions, "forward");
       const angle = (Math.PI / 4) * this.stream.readInt(3, "forward");
-      const speed = speedBase + this.stream.readChoice([-18, -6, 8, 20], "forward");
+      const speed = speedBase + this.stream.readChoice([-16, 6, 22, 52], "forward");
       hazards.push({
         x: position.x,
         y: position.y,
-        radius: 11 + (index % 2),
-        vx: Math.cos(angle) * speed,
+        radius: scaleSize(11 + (index % 2)),
+        vx: Math.cos(angle) * speed * X_SCALE,
         vy: Math.sin(angle) * speed,
       });
     }
 
     return {
       type: "resonance_constellation",
-      templateName: "Resonance Constellation",
+      templateName: chosenFamily.name,
       traps: [],
       resonance: {
         targets,
         hazards,
         chaosTiles: [],
         stars: {
-          centerX: 400,
+          centerX: scaleArenaX(400),
           centerY: 225,
           stars: [],
           connectLines: false,
@@ -598,7 +788,7 @@ export class PhaseController {
           minRadius: 0,
           maxRadius: 0,
         },
-        pulseMs: 0,
+        pulseMs: [980, 760, 620, 480][pulseProfile],
       },
     };
   }
@@ -684,11 +874,11 @@ export class PhaseController {
     return {
       type: "ruin_beams",
       templateName: `Quantum Gates - ${templateNames[template]}`,
-      traps: RUIN_TRAPS[trapLayout],
+      traps: scaleTrapLayout(RUIN_TRAPS[trapLayout]),
       beams: {
         laneCenters: BEAM_LANE_CENTERS,
         laneSequence: rotateArray(sequenceTable[sequencePattern], sequenceOffset),
-        laneWidth: widths[template] + (warningProfile === 2 ? 12 : 0) - (warningProfile === 1 ? 8 : 0),
+        laneWidth: scaleSize(widths[template] + (warningProfile === 2 ? 12 : 0) - (warningProfile === 1 ? 8 : 0)),
         warningMs: warnings[warningProfile],
         fireMs: fires[template],
         label: templateNames[template],
@@ -744,9 +934,9 @@ export class PhaseController {
     return {
       type: "solace_nodes",
       templateName: "Constellation Trace",
-      traps: SOLACE_TRAPS[trapLayout],
+      traps: scaleTrapLayout(SOLACE_TRAPS[trapLayout]),
       nodes: {
-        positions: NODE_LAYOUTS[layoutIndex],
+        positions: scalePoints(NODE_LAYOUTS[layoutIndex]),
         order: NODE_ORDERS[orderIndex],
         wisps: wisps[wispProfile],
       },
@@ -755,41 +945,52 @@ export class PhaseController {
 
   private buildSolaceShards(): PhasePattern {
     const templateIndex = this.stream.readInt(3, "forward");
-    const goodSpeedProfile = this.stream.readInt(2, "forward");
-    const badSpeedProfile = this.stream.readInt(2, "forward");
+    const sharedSpeedProfile = this.stream.readInt(2, "forward");
     const waveSpacingProfile = this.stream.readInt(2, "forward");
     const trapLayout = this.stream.readInt(2, "forward");
     const laneSets = [
-      [120, 260, 400, 540, 680],
-      [100, 245, 400, 555, 700],
-      [138, 280, 400, 520, 662],
-      [112, 286, 400, 514, 688],
-      [132, 228, 400, 572, 668],
-      [96, 214, 400, 586, 704],
-      [156, 286, 400, 514, 644],
-      [118, 256, 400, 544, 682],
+      [96, 214, 332, 450, 568, 704],
+      [108, 226, 322, 440, 558, 692],
+      [88, 206, 324, 442, 560, 708],
+      [118, 236, 334, 432, 550, 668],
+      [100, 200, 320, 448, 576, 696],
+      [124, 232, 340, 448, 556, 664],
+      [92, 214, 336, 458, 580, 702],
+      [112, 222, 332, 442, 552, 682],
     ];
-    const lanePositions = laneSets[templateIndex];
+    const lanePositions = laneSets[templateIndex].map(scaleArenaX);
     const warningMs = [920, 980, 1060, 880][waveSpacingProfile];
-    const goodSpeeds = [280, 310, 340, 325];
-    const badSpeeds = [320, 360, 400, 380];
+    const sharedSpeeds = [360, 390, 420, 450];
     const waveSpacing = [2200, 1900, 1700, 1500][waveSpacingProfile];
     return {
       type: "solace_shards",
       templateName: "Quantum Rain",
-      traps: SOLACE_TRAPS[trapLayout],
+      traps: scaleTrapLayout(SOLACE_TRAPS[trapLayout]),
       shardPattern: {
         lanePositions,
         templateIndex,
         waveSpacingMs: waveSpacing,
         warningBaseMs: warningMs,
-        goodSpeedBase: goodSpeeds[goodSpeedProfile],
-        badSpeedBase: badSpeeds[badSpeedProfile],
+        goodSpeedBase: sharedSpeeds[sharedSpeedProfile],
+        badSpeedBase: sharedSpeeds[sharedSpeedProfile],
       },
     };
   }
 
   private getLaneOrdering(templateIndex: number, laneCount: number) {
+    if (laneCount === 6) {
+      const orderings = [
+        [0, 1, 2, 3, 4, 5],
+        [5, 4, 3, 2, 1, 0],
+        [2, 3, 1, 4, 0, 5],
+        [3, 2, 4, 1, 5, 0],
+        [1, 0, 2, 3, 5, 4],
+        [4, 5, 3, 2, 0, 1],
+        [0, 2, 4, 1, 3, 5],
+        [5, 3, 1, 4, 2, 0],
+      ];
+      return orderings[templateIndex];
+    }
     const orderings = [
       [0, 1, 2, 3, 4],
       [4, 3, 2, 1, 0],
