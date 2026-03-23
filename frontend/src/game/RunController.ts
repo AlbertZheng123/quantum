@@ -14,6 +14,9 @@ const PHASE_TWO_PAUSE_MS = 2000;
 const PHASE_TWO_TRANSFORM_MS = 2000;
 const PHASE_TWO_LINE_MS = 1500;
 const PHASE_TWO_LINE_GAP_MS = 1000;
+const PHASE_TWO_SURGE_DELAY_MS = 1000;
+const PHASE_TWO_SURGE_MS = 2000;
+const PHASE_TWO_RESUME_MS = 2000;
 const PHASE_TWO_LINES = [
   "My attacks will become harder to survive now",
   "You really think you've defeated me huh?",
@@ -432,10 +435,7 @@ export class RunController extends EventTarget {
 
     if (this.state.phaseTwoTransition === "transform") {
       this.phaseTwoStageRemainingMs = Math.max(0, this.phaseTwoStageRemainingMs - deltaMs);
-      const ratio = 1 - (this.phaseTwoStageRemainingMs / PHASE_TWO_TRANSFORM_MS);
-      this.state.goal = Math.round(this.phaseTwoGoalStart - ((this.phaseTwoGoalStart - PHASE_TWO_GOAL_FLOOR) * ratio));
       if (this.phaseTwoStageRemainingMs <= 0) {
-        this.state.goal = PHASE_TWO_GOAL_FLOOR;
         this.state.phaseTwoActive = true;
         this.state.chaos = 50;
         this.state.phaseTwoTransition = "monologue";
@@ -479,17 +479,60 @@ export class RunController extends EventTarget {
       }
 
       if (this.phaseTwoLineIndex >= PHASE_TWO_LINES.length - 1) {
-        this.state.phaseTwoTransition = "none";
-        this.state.controller = "ruin";
-        this.state.activePhase = this.phaseController.buildPhase("ruin", true);
-        this.state.chaos = this.chaosController.nextResetValue();
-        this.state.statusText = "Chaos phase awakened";
-        this.state.speechText = "Die now!";
-        this.state.waitingText = "I will take the body back. Stay alive.";
-        this.chaosController.reset(true);
-        this.emit("phase_two_complete");
+        this.state.phaseTwoTransition = "surge_delay";
+        this.state.speechText = "";
+        this.phaseTwoGoalStart = this.state.goal;
+        this.phaseTwoStageRemainingMs = PHASE_TWO_SURGE_DELAY_MS;
+        this.emit("tick");
         return;
       }
+    }
+
+    if (this.state.phaseTwoTransition === "surge_delay") {
+      this.phaseTwoStageRemainingMs -= deltaMs;
+      if (this.phaseTwoStageRemainingMs > 0) {
+        this.emit("tick");
+        return;
+      }
+
+      this.state.phaseTwoTransition = "surge";
+      this.phaseTwoStageRemainingMs = PHASE_TWO_SURGE_MS;
+      this.emit("tick");
+      return;
+    }
+
+    if (this.state.phaseTwoTransition === "surge") {
+      this.phaseTwoStageRemainingMs = Math.max(0, this.phaseTwoStageRemainingMs - deltaMs);
+      const ratio = 1 - (this.phaseTwoStageRemainingMs / PHASE_TWO_SURGE_MS);
+      this.state.goal = Math.round(this.phaseTwoGoalStart - ((this.phaseTwoGoalStart - PHASE_TWO_GOAL_FLOOR) * ratio));
+      if (this.phaseTwoStageRemainingMs <= 0) {
+        this.state.goal = PHASE_TWO_GOAL_FLOOR;
+        this.state.phaseTwoTransition = "resume";
+        this.phaseTwoStageRemainingMs = PHASE_TWO_RESUME_MS;
+        this.emit("tick");
+        return;
+      }
+      this.emit("tick");
+      return;
+    }
+
+    if (this.state.phaseTwoTransition === "resume") {
+      this.phaseTwoStageRemainingMs -= deltaMs;
+      if (this.phaseTwoStageRemainingMs > 0) {
+        this.emit("tick");
+        return;
+      }
+
+      this.state.phaseTwoTransition = "none";
+      this.state.controller = "ruin";
+      this.state.activePhase = this.phaseController.buildPhase("ruin", true);
+      this.state.chaos = this.chaosController.nextResetValue();
+      this.state.statusText = "Chaos phase awakened";
+      this.state.speechText = "Die now!";
+      this.state.waitingText = "I will take the body back. Stay alive.";
+      this.chaosController.reset(true);
+      this.emit("phase_two_complete");
+      return;
     }
   }
 

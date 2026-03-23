@@ -222,6 +222,9 @@ export class Hud {
     this.shell.classList.toggle("retro-shell--phase-two-pause", state.phaseTwoTransition === "pause");
     this.shell.classList.toggle("retro-shell--phase-two-transform", state.phaseTwoTransition === "transform");
     this.shell.classList.toggle("retro-shell--phase-two-gap", state.phaseTwoTransition === "gap");
+    this.shell.classList.toggle("retro-shell--phase-two-surge-delay", state.phaseTwoTransition === "surge_delay");
+    this.shell.classList.toggle("retro-shell--phase-two-surge", state.phaseTwoTransition === "surge");
+    this.shell.classList.toggle("retro-shell--phase-two-resume", state.phaseTwoTransition === "resume");
     this.shell.classList.toggle("retro-shell--phase-two-monologue", state.phaseTwoTransition === "monologue");
 
     const activeController = state.phaseTwoTransition !== "none"

@@ -1,6 +1,16 @@
 export type Controller = "ruin" | "solace" | "swapping";
 export type EntropySource = "curby" | "fallback";
-export type PhaseTwoTransition = "none" | "fade" | "reveal" | "pause" | "transform" | "monologue" | "gap";
+export type PhaseTwoTransition =
+  | "none"
+  | "fade"
+  | "reveal"
+  | "pause"
+  | "transform"
+  | "monologue"
+  | "gap"
+  | "surge_delay"
+  | "surge"
+  | "resume";
 export type PhaseType =
   | "ruin_orbs"
   | "ruin_beams"

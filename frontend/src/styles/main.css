@@ -694,6 +694,8 @@ body {
 .retro-shell--phase-two-transform .retro-status,
 .retro-shell--phase-two-gap .retro-combat,
 .retro-shell--phase-two-gap .retro-status,
+.retro-shell--phase-two-surge-delay .retro-combat,
+.retro-shell--phase-two-surge-delay .retro-status,
 .retro-shell--phase-two-monologue .retro-combat,
 .retro-shell--phase-two-monologue .retro-status {
   opacity: 0;
@@ -708,6 +710,9 @@ body {
 .retro-shell--phase-two-pause .retro-header,
 .retro-shell--phase-two-transform .retro-header,
 .retro-shell--phase-two-gap .retro-header,
+.retro-shell--phase-two-surge-delay .retro-header,
+.retro-shell--phase-two-surge .retro-header,
+.retro-shell--phase-two-resume .retro-header,
 .retro-shell--phase-two-monologue .retro-header {
   opacity: 1;
 }
@@ -717,6 +722,9 @@ body {
 .retro-shell--phase-two-pause .retro-waiting,
 .retro-shell--phase-two-transform .retro-waiting,
 .retro-shell--phase-two-gap .retro-waiting,
+.retro-shell--phase-two-surge-delay .retro-waiting,
+.retro-shell--phase-two-surge .retro-waiting,
+.retro-shell--phase-two-resume .retro-waiting,
 .retro-shell--phase-two-monologue .retro-waiting {
   opacity: 0;
 }
@@ -726,12 +734,15 @@ body {
 .retro-shell--phase-two-pause .retro-speech,
 .retro-shell--phase-two-transform .retro-speech,
 .retro-shell--phase-two-gap .retro-speech,
+.retro-shell--phase-two-surge-delay .retro-speech,
+.retro-shell--phase-two-surge .retro-speech,
+.retro-shell--phase-two-resume .retro-speech,
 .retro-shell--phase-two-monologue .retro-speech {
   opacity: 1;
 }
 
-.retro-shell--phase-two-transform .retro-meter--goal,
-.retro-shell--phase-two-transform .retro-meter--chaos {
+.retro-shell--phase-two-surge .retro-meter--goal,
+.retro-shell--phase-two-surge .retro-meter--chaos {
   animation: retro-meter-shake 0.11s steps(2, end) infinite;
 }
 
